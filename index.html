@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Certificado Digital de Mantenimiento</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+    
+    <style>
+        :root {
+            --primario: #0056b3;
+            --fondo: #f8f9fa;
+            --exito: #28a745;
+            --error: #dc3545;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--fondo);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        .card {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 500px;
+        }
+
+        h2 {
+            text-align: center;
+            color: var(--primario);
+            margin-bottom: 25px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            box-sizing: border-box;
+            font-size: 15px;
+        }
+
+        button {
+            width: 100%;
+            padding: 12px;
+            background-color: var(--primario);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: 0.3s;
+        }
+
+        button:hover { background-color: #004494; }
+        button:disabled { background-color: #ccc; cursor: not-allowed; }
+
+        #status {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 8px;
+            text-align: center;
+            font-size: 14px;
+            min-height: 20px;
+        }
+
+        .mensaje-espera { color: #666; background: #eee; }
+        .mensaje-exito { color: white; background: var(--exito); }
+        .mensaje-error { color: white; background: var(--error); }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h2>Certificado Digital</h2>
+    
+    <div class="form-group">
+        <label>Empresa Mantenedora</label>
+        <input type="text" id="empresa" placeholder="Nombre de tu empresa">
+    </div>
+
+    <div class="form-group">
+        <label>Identificación de Máquina</label>
+        <input type="text" id="maquina" placeholder="Ej: Torno 1 / Prensa A2">
+    </div>
+
+    <div class="form-group">
+        <label>Fecha de Intervención</label>
+        <input type="date" id="fecha">
+    </div>
+
+    <div class="form-group">
+        <label>Técnico Responsable</label>
+        <input type="text" id="trabajador" placeholder="Nombre del operario">
+    </div>
+
+    <div class="form-group">
+        <label>Estado Final</label>
+        <select id="estado">
+            <option value="Operativa ✅">Operativa ✅</option>
+            <option value="Pendiente ⚠️">Pendiente ⚠️</option>
+            <option value="Averiada ❌">Averiada ❌</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label>Email del Cliente</label>
+        <input type="email" id="email_cliente" placeholder="correo@cliente.com">
+    </div>
+
+    <button id="btnEjecutar">Firmar y Enviar Certificado</button>
+    
+    <div id="status">Listo para registrar...</div>
+</div>
+
+<script>
+    // ==========================================
+    // CONFIGURACIÓN - RELLENA TUS DATOS AQUÍ
+    // ==========================================
+    const CONTRACT_ADDRESS = "0xD8974FAb3d07f314ee3d173ac671763B7cB47865"; 
+    const EMAILJS_PUBLIC_KEY = "2UDbIwkrCXFsPE6Ty";
+    const EMAILJS_SERVICE_ID = "service_s82os7d";
+    const EMAILJS_TEMPLATE_ID = "template_kjajbbf";
+
+    // Color de la etiqueta "Estado final" en el email
+    const COLORES_ESTADO = {
+        "Operativa ✅": "#16a34a",   // verde
+        "Pendiente ⚠️": "#d97706",  // ámbar
+        "Averiada ❌": "#dc2626"    // rojo
+    };
+
+    const ABI = [
+        {"inputs":[],"stateMutability":"nonpayable","type":"constructor"},
+        {"inputs":[{"internalType":"string","name":"_empresa","type":"string"},{"internalType":"string","name":"_maquina","type":"string"},{"internalType":"string","name":"_fecha","type":"string"},{"internalType":"string","name":"_trabajador","type":"string"},{"internalType":"string","name":"_estado","type":"string"}],"name":"registrarMantenimiento","outputs":[],"stateMutability":"nonpayable","type":"function"}
+    ];
+
+    // Inicialización de EmailJS
+    emailjs.init(EMAILJS_PUBLIC_KEY);
+
+    document.getElementById("btnEjecutar").onclick = async function() {
+        const btn = this;
+        const statusDiv = document.getElementById("status");
+
+        try {
+            if (!window.ethereum) throw new Error("MetaMask no detectado.");
+
+            // Captura de datos del formulario
+            const datos = {
+                empresa: document.getElementById("empresa").value,
+                maquina: document.getElementById("maquina").value,
+                fecha: document.getElementById("fecha").value,
+                trabajador: document.getElementById("trabajador").value,
+                estado: document.getElementById("estado").value,
+                email: document.getElementById("email_cliente").value
+            };
+
+            if (!datos.empresa || !datos.email) throw new Error("Faltan campos críticos.");
+
+            btn.disabled = true;
+            statusDiv.className = "mensaje-espera";
+            statusDiv.innerText = "Cambiando a Red Sepolia...";
+
+            // Forzar Red Sepolia (0xaa36a7)
+            await window.ethereum.request({
+                method: 'wallet_switchEthereumChain',
+                params: [{ chainId: '0xaa36a7' }],
+            });
+
+            const provider = new ethers.BrowserProvider(window.ethereum);
+            const signer = await provider.getSigner();
+            
+            // Uso de getAddress para evitar errores de ENS
+            const contrato = new ethers.Contract(ethers.getAddress(CONTRACT_ADDRESS), ABI, signer);
+
+            statusDiv.innerText = "Firma la transacción en MetaMask...";
+
+            // Envío con gas manual para evitar el error de validación
+            const tx = await contrato.registrarMantenimiento(
+                datos.empresa, datos.maquina, datos.fecha, datos.trabajador, datos.estado,
+                { gasLimit: 400000 }
+            );
+
+            statusDiv.innerText = "Procesando en Blockchain...";
+            await tx.wait();
+
+            // Envío de EmailJS: las claves coinciden con las variables de la plantilla
+            statusDiv.innerText = "¡Blockchain OK! Enviando email...";
+
+            const params = {
+                empresa: datos.empresa,
+                maquina: datos.maquina,
+                fecha: datos.fecha,
+                tecnico: datos.trabajador,
+                estado: datos.estado,
+                estado_color: COLORES_ESTADO[datos.estado] || "#0056b3",
+                to_email: datos.email,
+                tx_hash: tx.hash,
+                etherscan_url: "https://sepolia.etherscan.io/tx/" + tx.hash
+            };
+            console.log("Parámetros a EmailJS:", params);
+
+            await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, params);
+
+            statusDiv.className = "mensaje-exito";
+            statusDiv.innerText = "✅ Éxito: Registro guardado y Email enviado.";
+            alert("Transacción confirmada en Sepolia!");
+
+        } catch (error) {
+            console.error(error);
+            statusDiv.className = "mensaje-error";
+            statusDiv.innerText = "Error: " + (error.reason || error.message || error.text || "Error desconocido");
+        } finally {
+            btn.disabled = false;
+        }
+    };
+</script>
+
+</body>
+</html>
